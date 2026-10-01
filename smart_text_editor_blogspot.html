@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Text Editor & Proofreader</title>
+<style>
+:root{--green:#16794b;--green2:#eaf7ef;--ink:#17211b;--muted:#607067;--line:#dce6df;--red:#b42318;--redbg:#fff0ee;--blue:#155eef;--bluebg:#eff6ff}
+*{box-sizing:border-box}
+body{margin:0;background:#f5f8f6;color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:18px}
+header{background:linear-gradient(135deg,#126b42,#24965e);color:#fff;padding:22px;border-radius:16px;margin-bottom:16px}
+h1{font-size:clamp(1.4rem,3vw,2rem);margin:0 0 6px}
+header p{margin:0;opacity:.92}
+.panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 3px 12px #163d2410}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,.filelabel{border:0;border-radius:9px;padding:10px 13px;font-weight:650;cursor:pointer;background:var(--green);color:white;font-size:14px}
+button.secondary,.filelabel.secondary{background:#edf3ef;color:#20352a;border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:not-allowed}
+input[type=file]{display:none}
+.status{font-size:13px;color:var(--muted);margin-top:8px}
+.editors{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field label{display:block;font-weight:700;margin-bottom:7px}
+textarea{width:100%;min-height:300px;resize:vertical;border:1px solid #cbd8cf;border-radius:10px;padding:13px;font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:#18251d;background:#fff}
+textarea:focus{outline:2px solid #8bcba6;border-color:var(--green)}
+.stats{font-size:12px;color:var(--muted);margin-top:5px}
+.suggestions{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.suggestion{border:1px solid var(--line);border-radius:10px;padding:12px}
+.suggestion strong{display:block;margin-bottom:4px}
+.suggestion p{margin:0 0 9px;color:var(--muted);font-size:13px}
+.pill{display:inline-block;background:var(--green2);color:#126b42;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:700;margin-bottom:7px}
+.diff{white-space:pre-wrap;overflow-wrap:anywhere;background:#fbfcfb;border:1px solid var(--line);border-radius:10px;padding:14px;min-height:60px;font:14px/1.7 ui-monospace,monospace}
+.del{background:var(--redbg);color:var(--red);text-decoration:line-through}
+.ins{background:#e7f8ed;color:#126b42;text-decoration:none}
+.note{font-size:13px;color:var(--muted)}
+footer{text-align:center;font-size:12px;color:var(--muted);padding:8px 0 20px}
+@media(max-width:760px){.wrap{padding:10px}.editors{grid-template-columns:1fr}textarea{min-height:220px}header{padding:18px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Smart Text Editor & Proofreader</h1>
+  <p>Rapikan teks, periksa ejaan umum, lihat perubahan, lalu salin atau ekspor hasilnya.</p>
+</header>
+
+<section class="panel">
+  <div class="toolbar">
+    <label class="filelabel secondary" for="fileInput">📄 Impor TXT</label>
+    <input id="fileInput" type="file" accept=".txt,text/plain">
+    <button id="cleanBtn">Rapikan & Periksa</button>
+    <button id="replaceAllBtn" class="secondary">Terapkan semua saran</button>
+    <button id="clearBtn" class="secondary">Bersihkan</button>
+    <button id="copyBtn" class="secondary">Salin hasil</button>
+    <button id="txtBtn" class="secondary">Ekspor TXT</button>
+    <button id="printBtn" class="secondary">Cetak / Simpan PDF</button>
+  </div>
+  <div class="status" id="status">Semua pemrosesan dasar berlangsung di browser. Teks tidak dikirim ke server oleh halaman ini.</div>
+</section>
+
+<section class="panel">
+  <div class="editors">
+    <div class="field">
+      <label for="source">Teks asli</label>
+      <textarea id="source" placeholder="Tempel atau ketik teks yang ingin diperiksa di sini..."></textarea>
+      <div class="stats" id="sourceStats">0 kata · 0 karakter</div>
+    </div>
+    <div class="field">
+      <label for="result">Hasil perbaikan</label>
+      <textarea id="result" placeholder="Hasil yang sudah dirapikan akan muncul di sini..."></textarea>
+      <div class="stats" id="resultStats">0 kata · 0 karakter</div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 style="font-size:1.1rem;margin:0 0 10px">Saran berdasarkan konteks</h2>
+  <div id="suggestions" class="suggestions"><p class="note">Klik “Rapikan & Periksa” untuk menampilkan saran.</p></div>
+</section>
+
+<section class="panel">
+  <h2 style="font-size:1.1rem;margin:0 0 10px">Perbandingan perubahan</h2>
+  <div id="diff" class="diff">Perubahan akan ditampilkan di sini.</div>
+  <p class="note">Merah = teks yang dihapus/diganti; hijau = teks baru. Tampilan ini bersifat ringkas, bukan pemeriksa tata bahasa berbasis AI.</p>
+</section>
+<footer>Smart Text Editor & Proofreader · Versi ringan untuk disematkan di Blogspot</footer>
+</div>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const source=$('source'), result=$('result'), suggestions=$('suggestions'), diff=$('diff'), status=$('status');
+  let pending=[];
+  const typoMap = {
+    'aktifitas':'aktivitas','analisa':'analisis','apotik':'apotek','antri':'antre',
+    'cinderamata':'cenderamata','ijin':'izin','jadual':'jadwal','karir':'karier',
+    'kwalitas':'kualitas','kwitansi':'kuitansi','nasehat':'nasihat','resiko':'risiko',
+    'sekedar':'sekadar','silahkan':'silakan','sistim':'sistem','tehnik':'teknik',
+    'telor':'telur','terimakasih':'terima kasih','ustad':'ustaz','ustadz':'ustaz',
+    'praktek':'praktik','obyek':'objek','subyek':'subjek','hutang':'utang'
+  };
+  const contextRules = [
+    {pattern:/\bsangsi\b/gi, replacement:'sanksi', title:'sangsi → sanksi', note:'“Sangsi” berarti ragu; “sanksi” berarti hukuman atau konsekuensi.', category:'Konteks'},
+    {pattern:/\bdi balik\b/gi, replacement:'dibalik', title:'di balik ↔ dibalik', note:'“Di balik” menunjukkan tempat/posisi; “dibalik” adalah kata kerja pasif. Pilih sesuai maksud kalimat.', category:'Konteks', ambiguous:true},
+    {pattern:/\bdibalik\b/gi, replacement:'di balik', title:'dibalik ↔ di balik', note:'“Di balik” menunjukkan tempat/posisi; “dibalik” adalah kata kerja pasif. Pilih sesuai maksud kalimat.', category:'Konteks', ambiguous:true},
+    {pattern:/\bmasa\b/gi, replacement:'massa', title:'masa ↔ massa', note:'“Masa” berkaitan dengan waktu/periode; “massa” berarti sekumpulan orang atau besaran fisika.', category:'Konteks', ambiguous:true},
+    {pattern:/\bmassa\b/gi, replacement:'masa', title:'massa ↔ masa', note:'“Massa” berarti sekumpulan orang/besaran fisika; “masa” berkaitan dengan waktu/periode.', category:'Konteks', ambiguous:true}
+  ];
+  function count(text){const words=text.trim()?text.trim().split(/\s+/).length:0;return `${words} kata · ${text.length} karakter`;}
+  function updateStats(){ $('sourceStats').textContent=count(source.value); $('resultStats').textContent=count(result.value);}
+  function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function diffHtml(a,b){
+    if(a===b)return escapeHtml(b)||'Tidak ada perubahan.';
+    // Compact character-level common-prefix/suffix diff; suitable for a quick overview.
+    let start=0;while(start<a.length&&start<b.length&&a[start]===b[start])start++;
+    let endA=a.length,endB=b.length;while(endA>start&&endB>start&&a[endA-1]===b[endB-1]){endA--;endB--;}
+    return escapeHtml(a.slice(0,start))+'<span class="del">'+escapeHtml(a.slice(start,endA))+'</span><span class="ins">'+escapeHtml(b.slice(start,endB))+'</span>'+escapeHtml(a.slice(endA));
+  }
+  function renderSuggestions(items){
+    pending=items;
+    if(!items.length){suggestions.innerHTML='<p class="note">Tidak ada saran khusus dari aturan dasar. Tetap periksa hasil secara manual.</p>';return;}
+    suggestions.innerHTML='';
+    items.forEach((item,index)=>{
+      const card=document.createElement('div');card.className='suggestion';
+      card.innerHTML=`<span class="pill">${escapeHtml(item.category||'Ejaan')}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.note||'Periksa kembali sesuai konteks.')}</p>`;
+      if(item.ambiguous){
+        const select=document.createElement('select');select.style.cssText='width:100%;padding:8px;border:1px solid #ccd8cf;border-radius:8px;margin-bottom:8px';
+        const opt1=document.createElement('option');opt1.value=item.replacement;opt1.textContent='Pilih: '+item.replacement;
+        const opt2=document.createElement('option');opt2.value='';opt2.textContent='Biarkan seperti semula';select.append(opt1,opt2);card.appendChild(select);item.select=select;
+      }
+      const btn=document.createElement('button');btn.textContent='Terapkan saran';btn.style.width='100%';
+      btn.addEventListener('click',()=>{applySuggestion(item);status.textContent='Saran diterapkan. Periksa kembali konteks kalimat.';});
+      card.appendChild(btn);suggestions.appendChild(card);
+    });
+  }
+  function applySuggestion(item){
+    if(item.ambiguous && item.select && !item.select.value)return;
+    const replacement=item.ambiguous?item.select.value:item.replacement;
+    const re=new RegExp(item.pattern.source,item.pattern.flags);
+    result.value=result.value.replace(re,replacement);updateStats();diff.innerHTML=diffHtml(source.value,result.value);
+  }
+  function runCheck(){
+    const original=source.value;
+    let text=original;
+    const found=[];
+    // Whitespace and punctuation normalization
+    text=text.replace(/\r\n?/g,'\n').replace(/[ \t]+/g,' ').replace(/[ \t*\n]+([,.;:!?])/g,'$1')
+      .replace(/([,;:!?])([^\s\n])/g,'$1 $2').replace(/\s+$/gm,'').replace(/\n{3,}/g,'\n\n');
+    // Common spelling substitutions (whole words, case-aware enough for basic use)
+    Object.keys(typoMap).forEach(w=>{
+      const re=new RegExp('\\b'+w+'\\b','gi');
+      if(re.test(text)){
+        const count=(text.match(re)||[]).length;
+        text=text.replace(re,m=>m[0]===m[0].toUpperCase()?typoMap[w].toUpperCase():(m[0]===m[0].toLowerCase()?typoMap[w]:typoMap[w][0].toUpperCase()+typoMap[w].slice(1)));
+        found.push({pattern:new RegExp('\\b'+w+'\\b','gi'),replacement:typoMap[w],title:w+' → '+typoMap[w],note:`Ditemukan ${count} kali. Periksa apakah bentuk baku ini sesuai konteks.`,category:'Ejaan'});
+      }
+    });
+    contextRules.forEach(rule=>{
+      if(rule.pattern.test(original)){
+        // Avoid applying ambiguous context guesses automatically.
+        found.push({...rule,pattern:rule.pattern});
+      }
+      rule.pattern.lastIndex=0;
+    });
+    result.value=text;updateStats();diff.innerHTML=diffHtml(original,text);renderSuggestions(found);
+    status.textContent=`Pemeriksaan selesai. ${found.length} jenis saran ditemukan. Ini pemeriksaan aturan dasar, bukan analisis AI penuh.`;
+  }
+  $('cleanBtn').addEventListener('click',runCheck);
+  $('replaceAllBtn').addEventListener('click',()=>{
+    // Apply only non-ambiguous suggestions in bulk; ambiguous word choices require manual review.
+    let text=result.value;
+    pending.filter(x=>!x.ambiguous).forEach(item=>{text=text.replace(new RegExp(item.pattern.source,item.pattern.flags),item.replacement);});
+    result.value=text;updateStats();diff.innerHTML=diffHtml(source.value,result.value);
+    status.textContent='Saran yang tidak ambigu diterapkan. Saran kontekstual perlu dipilih satu per satu.';
+  });
+  $('clearBtn').addEventListener('click',()=>{source.value='';result.value='';pending=[];suggestions.innerHTML='<p class="note">Klik “Rapikan & Periksa” untuk menampilkan saran.</p>';diff.textContent='Perubahan akan ditampilkan di sini.';updateStats();status.textContent='Teks dibersihkan.';});
+  $('copyBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(result.value);status.textContent='Hasil disalin ke clipboard.';}catch(e){result.focus();result.select();status.textContent='Pilih teks hasil lalu salin secara manual.';}});
+  $('txtBtn').addEventListener('click',()=>{const blob=new Blob([result.value],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='hasil-proofreading.txt';a.click();URL.revokeObjectURL(a.href);});
+  $('printBtn').addEventListener('click',()=>{const w=window.open('','_blank');if(!w){status.textContent='Pop-up diblokir. Izinkan pop-up untuk mencetak atau menyimpan PDF.';return;}w.document.write('<!doctype html><html lang="id"><meta charset="utf-8"><title>Hasil Proofreading</title><style>body{font:12pt/1.6 Arial,sans-serif;margin:2cm;white-space:pre-wrap;overflow-wrap:anywhere}h1{font-size:18pt}</style><h1>Hasil Proofreading</h1><div>'+escapeHtml(result.value)+'</div><script>window.onload=()=>window.print()<\/script></html>');w.document.close();});
+  $('fileInput').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;source.value=await f.text();updateStats();status.textContent='File TXT berhasil diimpor.';e.target.value='';});
+  source.addEventListener('input',updateStats);result.addEventListener('input',()=>{updateStats();diff.innerHTML=diffHtml(source.value,result.value);});
+  updateStats();
+})();
+</script>
+</body>
+</html>
